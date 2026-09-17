@@ -1,0 +1,16 @@
+[package]
+name = "github.com/geng-language/test-runner-node"
+version = "7.0.0"
+summary = "For running gren-lang/test suites on Node"
+license = "BSD-3-Clause"
+geng = "0.6.0 <= v < 0.7.0"
+
+[platform]
+runtime = "node"
+
+[modules]
+exposed = ["Test.Runner.Node"]
+
+[dependencies]
+"github.com/geng-language/node" = "6.0.0 <= v < 7.0.0"
+"github.com/geng-language/test" = "5.0.0 <= v < 6.0.0"
