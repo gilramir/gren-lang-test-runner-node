@@ -1,10 +1,16 @@
-module Test.Runner.Node exposing (Program, Options, run, runWithOptions)
+module Test.Runner.Node exposing (Options, run, runWithOptions)
 
-{-| Define programs that run your tests and outputs the results to the terminal.
+{-| Run your tests and write the results to the terminal.
 
-An exit code of 1 will be set when there are failing tests.
+A run whose tests fail ends with exit status 1. Colours are used when the output
+is an interactive terminal that has them.
 
-@docs Program, run
+    main : Task Never {}
+    main =
+        Test.Runner.Node.run tests
+
+@docs run
+
 
 ## Customization
 
@@ -12,40 +18,31 @@ An exit code of 1 will be set when there are failing tests.
 
 -}
 
-import Test exposing (Test)
+import UInt32
 import Node
-import Init
-import Test.Runner.Log as Log
 import Random
+import Task exposing (Task)
+import Test exposing (Test)
 import Terminal
+import Test.Runner.Log as Log
 import Time
 
 
-{-| A value representing a test program.
+{-| Run a test suite with default options: a hundred runs per fuzz test and a
+seed taken from the clock.
 -}
-type alias Program =
-    Node.SimpleProgram {}
-
-
--- RUN
-
-
-{-| Run a test suite using default options.
--}
-run : Test -> Program
+run : Test -> Task Never {}
 run test =
-    Node.defineSimpleProgram <| \env ->
-        Init.awaitTask Time.now <| \time ->
-        Init.await Terminal.initialize <| \termConfig ->
-            Node.endSimpleProgramWithCmd <|
-                Log.runWithOptions
-                    { reportStreamOnPass = env.stdout
-                    , reportStreamOnFail = env.stderr
-                    , colorDepth = getColorDepth termConfig
+    Time.now
+        |> Task.andThen
+            (\time ->
+                runWithOptions
+                    { runs = 100
+                    , seed = Random.initialSeed (UInt32.fromInt64Wrap (Time.posixToMillis time))
                     }
-                    100
-                    (Random.initialSeed (Time.posixToMillis time))
                     test
+            )
+
 
 
 -- RUN WITH OPTIONS
@@ -53,8 +50,8 @@ run test =
 
 {-| Different options you can use to customize your test run.
 
-* `runs` configures how many times a `fuzz` test is executed with different inputs.
-* `seed` is used to generate random input in `fuzz` tests. A test suite run with the same seed will generate the same fuzz values.
+  - `runs` configures how many times a `fuzz` test is executed with different inputs.
+  - `seed` is used to generate random input in `fuzz` tests. A test suite run with the same seed will generate the same fuzz values.
 
 -}
 type alias Options =
@@ -65,26 +62,21 @@ type alias Options =
 
 {-| Run a test suite using the provided options.
 -}
-runWithOptions : Options -> Test -> Program
+runWithOptions : Options -> Test -> Task Never {}
 runWithOptions options test =
-    Node.defineSimpleProgram <| \env ->
-        Init.await Terminal.initialize <| \termConfig ->
-            Node.endSimpleProgramWithCmd <|
-                Log.runWithOptions
-                    { reportStreamOnPass = env.stdout
-                    , reportStreamOnFail = env.stderr
-                    , colorDepth = getColorDepth termConfig
-                    }
-                    options.runs
-                    options.seed
-                    test
-           
+    Terminal.describe
+        |> Task.andThen
+            (\terminal ->
+                Log.runWithOptions (getColorDepth terminal) options.runs options.seed test
+            )
 
-getColorDepth : Maybe Terminal.Configuration -> Int
-getColorDepth config =
-    when config is
+
+getColorDepth : Maybe Terminal.Description -> Int
+getColorDepth terminal =
+    when terminal is
         Just { colorDepth } ->
             colorDepth
-        Nothing ->
-            1 -- lowest color depth (no colors)
 
+        Nothing ->
+            -- lowest color depth (no colors)
+            1

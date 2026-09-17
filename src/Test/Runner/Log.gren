@@ -12,21 +12,13 @@ if the tests all passed, and 1 if any failed.
 
 -}
 
-import Random
-import Test.Runner.String exposing (Summary)
-import String
-import Test exposing (Test)
-import Stream
+import Console
 import Node
+import Random
+import String
 import Task exposing (Task)
-import Bytes exposing (Bytes)
-
-
-type alias OutputStreams =
-    { reportStreamOnPass : Stream.Writable Bytes
-    , reportStreamOnFail : Stream.Writable Bytes
-    , colorDepth : Int
-    }
+import Test exposing (Test)
+import Test.Runner.String exposing (Summary)
 
 
 type Color
@@ -37,10 +29,10 @@ type Color
 
 {-| Run the test using the provided options.
 -}
-runWithOptions : OutputStreams -> Int -> Random.Seed -> Test -> Cmd a
-runWithOptions streams runs seed test =
+runWithOptions : Int -> Int -> Random.Seed -> Test -> Task Never {}
+runWithOptions colorDepth runs seed test =
     Test.Runner.String.runWithOptions runs seed test
-        |> logOutput streams
+        |> logOutput colorDepth
  
 
 summarize : Summary -> Int -> String
@@ -69,27 +61,21 @@ summarize { output, passed, failed, autoFail } colorDepth =
         ]
 
 
-logOutput : OutputStreams -> Summary -> Cmd a
-logOutput streams summary =
+{-| Write the summary, to standard output when the run passed and to standard
+error when it did not, and set the exit status the program ends with.
+-}
+logOutput : Int -> Summary -> Task Never {}
+logOutput colorDepth summary =
     let
         output =
-            summarize summary streams.colorDepth
-
-        { printStream, exitCode } =
-            if summary.failed > 0 || summary.autoFail /= Nothing then
-                { printStream = streams.reportStreamOnFail
-                , exitCode = 1
-                }
-
-            else
-                { printStream = streams.reportStreamOnPass
-                , exitCode = 0
-                }
+            summarize summary colorDepth ++ "\n"
     in
-    Stream.writeLineAsBytes output printStream
-        |> Task.map (\_ -> Node.exitWithCode exitCode)
-        |> Task.onError (\_ -> Task.succeed <| Node.exitWithCode 1)
-        |> Task.executeCmd
+    if summary.failed > 0 || summary.autoFail /= Nothing then
+        Console.writeErr output
+            |> Task.andThen (\_ -> Node.setExitCode 1)
+
+    else
+        Console.write output
 
 
 colorize : Int -> Color -> String -> String
